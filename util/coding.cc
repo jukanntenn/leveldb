@@ -9,7 +9,7 @@ namespace leveldb {
 void PutFixed32(std::string* dst, uint32_t value) {
   char buf[sizeof(value)];
   EncodeFixed32(buf, value);
-  dst->append(buf, sizeof(buf));
+  dst->append(buf, sizeof(buf)); // 参数 1：需追加的数据；参数 2：追加的长度（字节数）
 }
 
 void PutFixed64(std::string* dst, uint64_t value) {
@@ -21,11 +21,11 @@ void PutFixed64(std::string* dst, uint64_t value) {
 char* EncodeVarint32(char* dst, uint32_t v) {
   // Operate on characters as unsigneds
   uint8_t* ptr = reinterpret_cast<uint8_t*>(dst);
-  static const int B = 128;
+  static const int B = 128; // 10000000
   if (v < (1 << 7)) {
-    *(ptr++) = v;
-  } else if (v < (1 << 14)) {
-    *(ptr++) = v | B;
+    *(ptr++) = v; // <=7 bit 的值
+  } else if (v < (1 << 14)) { // > 7 bit，<= 14 bit 
+    *(ptr++) = v | B; // 1|x== 1，所以标记为一定是 1
     *(ptr++) = v >> 7;
   } else if (v < (1 << 21)) {
     *(ptr++) = v | B;
@@ -47,9 +47,9 @@ char* EncodeVarint32(char* dst, uint32_t v) {
 }
 
 void PutVarint32(std::string* dst, uint32_t v) {
-  char buf[5];
+  char buf[5]; // 变长编码 7 bit 存储数据，因此 32 位无符号整数需要 32/7（向上取整）= 5 字节
   char* ptr = EncodeVarint32(buf, v);
-  dst->append(buf, ptr - buf);
+  dst->append(buf, ptr - buf); // ptr 是编码结束位置的指针，指针指向的数据类型是 1 个字节，因此指针减法正好得到编码后的字节数
 }
 
 char* EncodeVarint64(char* dst, uint64_t v) {
@@ -83,6 +83,14 @@ int VarintLength(uint64_t v) {
   return len;
 }
 
+// 从字节流中解码32位变长整数(Varint)
+// - 参数 ：
+//  - p ：输入数据的起始指针
+//  - limit ：输入数据的结束指针（不包含）
+//  - value ：输出参数，用于存储解码后的32位整数
+// - 返回值 ：
+//  - 成功时返回下一个数据的指针
+//  - 失败时返回nullptr
 const char* GetVarint32PtrFallback(const char* p, const char* limit,
                                    uint32_t* value) {
   uint32_t result = 0;

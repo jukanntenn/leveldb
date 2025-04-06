@@ -107,6 +107,7 @@ const char* GetVarint32PtrFallback(const char* p, const char* limit,
                                    uint32_t* value);
 inline const char* GetVarint32Ptr(const char* p, const char* limit,
                                   uint32_t* value) {
+  // 单字节内联快速处理，优化性能
   if (p < limit) {
     uint32_t result = *(reinterpret_cast<const uint8_t*>(p));
     if ((result & 128) == 0) {
