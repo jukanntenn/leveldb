@@ -76,6 +76,12 @@ TEST(Coding, EncodingOutput) {
 
 TEST(Coding, Varint32) {
   std::string s;
+  // 实际效果就是：
+  // 0 左移 0,1,2,3,...31 位
+  // 1 左移 0,1,2,3,...31 位
+  // 2 左移 0,1,2,3,...31 位
+  // ...
+  // 31 左移 0,1,2,3,...31 位
   for (uint32_t i = 0; i < (32 * 32); i++) {
     uint32_t v = (i / 32) << (i % 32);
     PutVarint32(&s, v);
@@ -132,6 +138,8 @@ TEST(Coding, Varint64) {
 
 TEST(Coding, Varint32Overflow) {
   uint32_t result;
+  // \x: 16 进制前缀
+  // \x81 转为二进制就是 100000001，依次类推
   std::string input("\x81\x82\x83\x84\x85\x11");
   ASSERT_TRUE(GetVarint32Ptr(input.data(), input.data() + input.size(),
                              &result) == nullptr);
@@ -143,6 +151,7 @@ TEST(Coding, Varint32Truncation) {
   PutVarint32(&s, large_value);
   uint32_t result;
   for (size_t len = 0; len < s.size() - 1; len++) {
+    // 没有读到结束标志位，总是返回 nullptr
     ASSERT_TRUE(GetVarint32Ptr(s.data(), s.data() + len, &result) == nullptr);
   }
   ASSERT_TRUE(GetVarint32Ptr(s.data(), s.data() + s.size(), &result) !=

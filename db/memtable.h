@@ -34,6 +34,7 @@ class MemTable {
     --refs_;
     assert(refs_ >= 0);
     if (refs_ <= 0) {
+      // 由于 Memtable 析构函数是私有的，正常情况下创建栈上对象编译器会报错，所以 delete 析构总是安全的。
       delete this;
     }
   }

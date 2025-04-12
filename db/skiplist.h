@@ -97,8 +97,12 @@ class SkipList {
   };
 
  private:
+  // static const int kMaxHeight = 12; 可能需要分配存储空间
+  // constexpr int kMaxHeight = 12; C++11才支持
+  // 定义编译器常量的惯例
   enum { kMaxHeight = 12 };
 
+  // ??? 并发无锁设计，需要进一步深入理解
   inline int GetMaxHeight() const {
     return max_height_.load(std::memory_order_relaxed);
   }
@@ -144,18 +148,21 @@ template <typename Key, class Comparator>
 struct SkipList<Key, Comparator>::Node {
   explicit Node(const Key& k) : key(k) {}
 
+  // 没有修饰符，struct 默认 public；class 默认 private
   Key const key;
 
   // Accessors/mutators for links.  Wrapped in methods so we can
   // add the appropriate barriers as necessary.
   Node* Next(int n) {
     assert(n >= 0);
+    // ???
     // Use an 'acquire load' so that we observe a fully initialized
     // version of the returned Node.
     return next_[n].load(std::memory_order_acquire);
   }
   void SetNext(int n, Node* x) {
     assert(n >= 0);
+    /// ???
     // Use a 'release store' so that anybody who reads through this
     // pointer observes a fully initialized version of the inserted node.
     next_[n].store(x, std::memory_order_release);
@@ -172,6 +179,7 @@ struct SkipList<Key, Comparator>::Node {
   }
 
  private:
+  // 柔性数组，节约内存。C++ 中并无数组越界检查，所以即使定义数组长度为 1，只要后续内存中有值，越界也可以访问。
   // Array of length equal to the node height.  next_[0] is lowest level link.
   std::atomic<Node*> next_[1];
 };
@@ -179,8 +187,10 @@ struct SkipList<Key, Comparator>::Node {
 template <typename Key, class Comparator>
 typename SkipList<Key, Comparator>::Node* SkipList<Key, Comparator>::NewNode(
     const Key& key, int height) {
+  // sizeof(Node) 包含 1 个 std::atomic<Node*> 指针的大小，Node 本身占 1 层，所以还需要 height - 1 个指针
   char* const node_memory = arena_->AllocateAligned(
       sizeof(Node) + sizeof(std::atomic<Node*>) * (height - 1));
+  // C++的"placement new"语法
   return new (node_memory) Node(key);
 }
 
@@ -201,12 +211,14 @@ inline const Key& SkipList<Key, Comparator>::Iterator::key() const {
   return node_->key;
 }
 
+// 常数时间复杂度
 template <typename Key, class Comparator>
 inline void SkipList<Key, Comparator>::Iterator::Next() {
   assert(Valid());
   node_ = node_->Next(0);
 }
 
+// 对数时间复杂度
 template <typename Key, class Comparator>
 inline void SkipList<Key, Comparator>::Iterator::Prev() {
   // Instead of using explicit "prev" links, we just search for the
@@ -218,6 +230,7 @@ inline void SkipList<Key, Comparator>::Iterator::Prev() {
   }
 }
 
+// 对数时间复杂度
 template <typename Key, class Comparator>
 inline void SkipList<Key, Comparator>::Iterator::Seek(const Key& target) {
   node_ = list_->FindGreaterOrEqual(target, nullptr);
@@ -232,7 +245,7 @@ template <typename Key, class Comparator>
 inline void SkipList<Key, Comparator>::Iterator::SeekToLast() {
   node_ = list_->FindLast();
   if (node_ == list_->head_) {
-    node_ = nullptr;
+    node_ = nullptr; // 说明是 empty skiplist
   }
 }
 
@@ -251,13 +264,15 @@ int SkipList<Key, Comparator>::RandomHeight() {
 
 template <typename Key, class Comparator>
 bool SkipList<Key, Comparator>::KeyIsAfterNode(const Key& key, Node* n) const {
+  // n 为 nullptr 时被视为无穷大，key 不可能在其后面，将返回 false
+  // n->key < key 时返回 true，说明 key 在 n 后面；否则返回 false，说明 key 在 n 前面
   // null n is considered infinite
   return (n != nullptr) && (compare_(n->key, key) < 0);
 }
 
 template <typename Key, class Comparator>
-typename SkipList<Key, Comparator>::Node*
-SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
+typename SkipList<Key, Comparator>::Node* // 必须加 typename，否则编译器无法确定这是内嵌类型还是特化模板中的静态成员
+SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key, // 找到第一个大于或者等于 key 的节点
                                               Node** prev) const {
   Node* x = head_;
   int level = GetMaxHeight() - 1;
@@ -267,7 +282,7 @@ SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
       // Keep searching in this list
       x = next;
     } else {
-      if (prev != nullptr) prev[level] = x;
+      if (prev != nullptr) prev[level] = x; // prev 记录经过的节点，当新节点插入后，这些节点的 next_[level] 可能需要指向新节点
       if (level == 0) {
         return next;
       } else {
@@ -280,13 +295,13 @@ SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
 
 template <typename Key, class Comparator>
 typename SkipList<Key, Comparator>::Node*
-SkipList<Key, Comparator>::FindLessThan(const Key& key) const {
+SkipList<Key, Comparator>::FindLessThan(const Key& key) const { // 找到**严格**小于 key 的最靠后节点
   Node* x = head_;
   int level = GetMaxHeight() - 1;
   while (true) {
-    assert(x == head_ || compare_(x->key, key) < 0);
+    assert(x == head_ || compare_(x->key, key) < 0); // 注意这里是短路求值，x != head_ 才会触发后面的 compare_() 函数
     Node* next = x->Next(level);
-    if (next == nullptr || compare_(next->key, key) >= 0) {
+    if (next == nullptr || compare_(next->key, key) >= 0) { // x 下一个节点的 key 不小于 key 了，说明 x 可能已经满足条件
       if (level == 0) {
         return x;
       } else {
@@ -302,13 +317,13 @@ SkipList<Key, Comparator>::FindLessThan(const Key& key) const {
 template <typename Key, class Comparator>
 typename SkipList<Key, Comparator>::Node* SkipList<Key, Comparator>::FindLast()
     const {
-  Node* x = head_;
+  Node* x = head_; // head_ 视为最底层链表的头节点，next_ 才是索引层的节点
   int level = GetMaxHeight() - 1;
   while (true) {
     Node* next = x->Next(level);
-    if (next == nullptr) {
+    if (next == nullptr) { // x 指向了 nullptr，说明已是这一层的最后节点
       if (level == 0) {
-        return x;
+        return x; // 注意边界条件，当跳表为空时，x=head_=nullptr，level 必为 0，返回的就是 head_
       } else {
         // Switch to next list
         level--;
@@ -323,9 +338,9 @@ template <typename Key, class Comparator>
 SkipList<Key, Comparator>::SkipList(Comparator cmp, Arena* arena)
     : compare_(cmp),
       arena_(arena),
-      head_(NewNode(0 /* any key will do */, kMaxHeight)),
+      head_(NewNode(0 /* any key will do */, kMaxHeight)), // head_ 分满 kMaxHeight 层，作为每一层的头节点
       max_height_(1),
-      rnd_(0xdeadbeef) {
+      rnd_(0xdeadbeef) { // ??? 取这个值有讲究吗？
   for (int i = 0; i < kMaxHeight; i++) {
     head_->SetNext(i, nullptr);
   }
@@ -346,6 +361,7 @@ void SkipList<Key, Comparator>::Insert(const Key& key) {
     for (int i = GetMaxHeight(); i < height; i++) {
       prev[i] = head_;
     }
+    // ??? 待深入研究
     // It is ok to mutate max_height_ without any synchronization
     // with concurrent readers.  A concurrent reader that observes
     // the new value of max_height_ will see either the old value of

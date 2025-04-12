@@ -89,6 +89,7 @@ TEST(SkipTest, InsertAndLookup) {
     ASSERT_EQ(*(keys.rbegin()), iter.key());
   }
 
+  // 正向迭代侧重于 seek 到某个节点再往后迭代的场景
   // Forward iteration test
   for (int i = 0; i < R; i++) {
     SkipList<Key, Comparator>::Iterator iter(&list);
@@ -109,6 +110,7 @@ TEST(SkipTest, InsertAndLookup) {
     }
   }
 
+  // 反向迭代侧重于 seek 到最后一个节点再往前迭代的场景
   // Backward iteration test
   {
     SkipList<Key, Comparator>::Iterator iter(&list);

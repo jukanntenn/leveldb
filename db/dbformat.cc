@@ -114,6 +114,7 @@ bool InternalFilterPolicy::KeyMayMatch(const Slice& key, const Slice& f) const {
   return user_policy_->KeyMayMatch(ExtractUserKey(key), f);
 }
 
+/// 内存布局：[user_key 长度 + 8][user_key][uint_64(sequence + type)]
 LookupKey::LookupKey(const Slice& user_key, SequenceNumber s) {
   size_t usize = user_key.size();
   size_t needed = usize + 13;  // A conservative estimate
@@ -124,7 +125,7 @@ LookupKey::LookupKey(const Slice& user_key, SequenceNumber s) {
     dst = new char[needed];
   }
   start_ = dst;
-  dst = EncodeVarint32(dst, usize + 8);
+  dst = EncodeVarint32(dst, usize + 8); // 8 是序列号和值类型的长度
   kstart_ = dst;
   std::memcpy(dst, user_key.data(), usize);
   dst += usize;
